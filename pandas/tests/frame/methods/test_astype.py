@@ -13,6 +13,7 @@ from pandas import (
     DatetimeTZDtype,
     Interval,
     IntervalDtype,
+    MultiIndex,
     NaT,
     Series,
     Timedelta,
@@ -781,3 +782,19 @@ def test_frame_astype_no_copy():
 
     assert result.a.dtype == pd.Int16Dtype()
     assert np.shares_memory(df.b.values, result.b.values)
+
+
+def test_frame_astype_cast_nullable_type():
+    # GH 46896
+    result = DataFrame(
+        columns=MultiIndex.from_tuples([("a", "b"), ("a", "d")]),
+        data=[[1, 2], [3, 4]],
+        dtype=(np.int32),
+    )
+    result["a"] = result["a"].astype("Int64")
+    expected = DataFrame(
+        columns=MultiIndex.from_tuples([("a", "b"), ("a", "d")]),
+        data=[[1, 2], [3, 4]],
+        dtype=(np.int64),
+    )
+    tm.assert_frame_equal(result, expected)

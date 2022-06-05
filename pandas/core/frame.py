@@ -11429,7 +11429,9 @@ def _reindex_for_setitem(value: DataFrame | Series, index: Index) -> ArrayLike:
     # reindex if necessary
 
     if value.index.equals(index) or not len(index):
-        return value._values.copy()
+        value._values
+        dtype = str(value.dtypes).lower()
+        return value._values.copy().astype(dtype)
 
     # GH#4107
     try:
