@@ -605,7 +605,6 @@ class BaseWindow(SelectionMixin):
                     step=self.step,
                 )
                 self._check_window_bounds(start, end, len(x))
-                # x = ensure_float64(x)
                 return func(x, start, end, min_periods, *numba_args)
 
             with np.errstate(all="ignore"):

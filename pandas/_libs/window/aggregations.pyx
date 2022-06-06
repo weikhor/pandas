@@ -930,7 +930,7 @@ def roll_kurt(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
 # Rolling median, min, max
 
 
-def roll_median_c(const float64_t[:] values, ndarray[int64_t] start,
+def roll_median_c(float_complex_types[:] values, ndarray[int64_t] start,
                   ndarray[int64_t] end, int64_t minp) -> np.ndarray:
     cdef:
         Py_ssize_t i, j
@@ -971,7 +971,10 @@ def roll_median_c(const float64_t[:] values, ndarray[int64_t] start,
                     nobs = 0
                 # setup
                 for j in range(s, e):
-                    val = values[j]
+                    if float_complex_types is complex64_t:
+                        val = values[j].real
+                    else:
+                        val = values[j]
                     if val == val:
                         nobs += 1
                         err = skiplist_insert(sl, val) == -1
@@ -982,7 +985,10 @@ def roll_median_c(const float64_t[:] values, ndarray[int64_t] start,
 
                 # calculate adds
                 for j in range(end[i - 1], e):
-                    val = values[j]
+                    if float_complex_types is complex64_t:
+                        val = values[j].real
+                    else:
+                        val = values[j]
                     if val == val:
                         nobs += 1
                         err = skiplist_insert(sl, val) == -1
@@ -991,7 +997,10 @@ def roll_median_c(const float64_t[:] values, ndarray[int64_t] start,
 
                 # calculate deletes
                 for j in range(start[i - 1], s):
-                    val = values[j]
+                    if float_complex_types is complex64_t:
+                        val = values[j].real
+                    else:
+                        val = values[j]
                     if val == val:
                         skiplist_remove(sl, val)
                         nobs -= 1
@@ -1071,7 +1080,7 @@ cdef inline numeric_t calc_mm(int64_t minp, Py_ssize_t nobs,
     return result
 
 
-def roll_max(ndarray[float64_t] values, ndarray[int64_t] start,
+def roll_max(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
              ndarray[int64_t] end, int64_t minp) -> np.ndarray:
     """
     Moving max of 1d array of any numeric type along axis=0 ignoring NaNs.
@@ -1092,10 +1101,16 @@ def roll_max(ndarray[float64_t] values, ndarray[int64_t] start,
     -------
     np.ndarray[float]
     """
+    cdef:
+        ndarray[float64_t] values
+    if float_complex_types is complex64_t:
+        values = fused_values.real.astype(float)
+    else:
+        values = fused_values
     return _roll_min_max(values, start, end, minp, is_max=1)
 
 
-def roll_min(ndarray[float64_t] values, ndarray[int64_t] start,
+def roll_min(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
              ndarray[int64_t] end, int64_t minp) -> np.ndarray:
     """
     Moving min of 1d array of any numeric type along axis=0 ignoring NaNs.
@@ -1113,6 +1128,12 @@ def roll_min(ndarray[float64_t] values, ndarray[int64_t] start,
     -------
     np.ndarray[float]
     """
+    cdef:
+        ndarray[float64_t] values
+    if float_complex_types is complex64_t:
+        values = fused_values.real.astype(float)
+    else:
+        values = fused_values
     return _roll_min_max(values, start, end, minp, is_max=0)
 
 
