@@ -19,6 +19,7 @@ from pandas._libs import (
     iNaT,
     lib,
 )
+from pandas._libs.lib import infer_dtype
 from pandas._typing import (
     ArrayLike,
     Dtype,
@@ -698,7 +699,10 @@ def nanmean(
         dtype_count = dtype
 
     count = _get_counts(values.shape, mask, axis, dtype=dtype_count)
-    the_sum = _ensure_numeric(values.sum(axis, dtype=dtype_sum))
+    the_sum = values.sum(axis, dtype=dtype_sum)
+    if infer_dtype(the_sum) in ("string") and the_sum.isdigit():
+        raise TypeError("cannot find the mean of type 'str'")
+    the_sum = _ensure_numeric(the_sum)
 
     if axis is not None and getattr(the_sum, "ndim", False):
         count = cast(np.ndarray, count)

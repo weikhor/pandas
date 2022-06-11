@@ -433,6 +433,23 @@ class TestDataFrameAnalytics:
         expected = Series([2.7, 681.6], index=["A", "C"])
         tm.assert_series_equal(result, expected)
 
+    def test_mean_string(self):
+        df = DataFrame(
+            {
+                "A": ["1", "2", "3"],
+                "B": ["a", "b", "c"],
+                "C": [1, 2, 3],
+                "D": ["0", "1", "J"],
+            }
+        )
+
+        msg = "cannot find the mean of type 'str'"
+        with pytest.raises(TypeError, match=msg):
+            df.mean(numeric_only=False)
+        # result = df.sum()
+        # expected = Series(["123", "abc", 6, "01J"], index=["A", "B", "C", "D"])
+        # tm.assert_series_equal(result, expected)
+
     def test_var_std(self, datetime_frame):
         result = datetime_frame.std(ddof=4)
         expected = datetime_frame.apply(lambda x: x.std(ddof=4))
