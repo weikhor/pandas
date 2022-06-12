@@ -40,6 +40,7 @@ from pandas.util._exceptions import find_stack_level
 from pandas.core.dtypes.common import (
     ensure_float64,
     is_bool,
+    is_complex_dtype,
     is_integer,
     is_list_like,
     is_numeric_dtype,
@@ -400,7 +401,10 @@ class BaseWindow(SelectionMixin):
                 if isinstance(values, ExtensionArray):
                     values = values.to_numpy(np.float64, na_value=np.nan)
                 else:
-                    values = ensure_float64(values)
+                    if is_complex_dtype(values):
+                        values = values.astype(np.complex64)
+                    else:
+                        values = ensure_float64(values)
             except (ValueError, TypeError) as err:
                 raise TypeError(f"cannot handle this type -> {values.dtype}") from err
 
@@ -650,7 +654,6 @@ class BaseWindow(SelectionMixin):
                     step=self.step,
                 )
                 self._check_window_bounds(start, end, len(x))
-
                 return func(x, start, end, min_periods, *numba_args)
 
             with np.errstate(all="ignore"):
