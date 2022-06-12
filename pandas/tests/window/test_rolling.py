@@ -1872,6 +1872,7 @@ def test_rolling_skew_kurt_floating_artifacts():
     result = r.kurt()
     assert (result[-2:] == -3).all()
 
+
 def test_numeric_only_frame(arithmetic_win_operators, numeric_only):
     # GH#46560
     kernel = arithmetic_win_operators
@@ -1886,20 +1887,7 @@ def test_numeric_only_frame(arithmetic_win_operators, numeric_only):
     assert list(expected.columns) == columns
 
     tm.assert_frame_equal(result, expected)
-    
-def test_rolling_imaginary_part_of_complex(arithmetic_win_operators):
-    # GH 46619
-    func_name = arithmetic_win_operators
-    df = DataFrame([1j, 1 + 2j])
-    result = getattr(
-        df.rolling(2),
-        func_name,
-    )()
-    expected = getattr(
-        DataFrame([0, 1]).rolling(2),
-        func_name,
-    )()
-    tm.assert_frame_equal(result, expected)    
+
 
 @pytest.mark.parametrize("kernel", ["corr", "cov"])
 @pytest.mark.parametrize("use_arg", [True, False])

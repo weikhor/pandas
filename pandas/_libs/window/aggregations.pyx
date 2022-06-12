@@ -14,7 +14,6 @@ import numpy as np
 
 cimport numpy as cnp
 from numpy cimport (
-    complex64_t,
     float32_t,
     float64_t,
     int64_t,
@@ -65,10 +64,6 @@ cdef bint is_monotonic_increasing_start_end_bounds(
     ndarray[int64_t, ndim=1] start, ndarray[int64_t, ndim=1] end
 ):
     return is_monotonic(start, False)[0] and is_monotonic(end, False)[0]
-
-ctypedef fused float_complex_types:
-    float64_t
-    complex64_t
 
 # ----------------------------------------------------------------------
 # Rolling sum
@@ -134,7 +129,7 @@ cdef inline void remove_sum(float64_t val, int64_t *nobs, float64_t *sum_x,
         sum_x[0] = t
 
 
-def roll_sum(float_complex_types[:] values, ndarray[int64_t] start,
+def roll_sum(const float64_t[:] values, ndarray[int64_t] start,
              ndarray[int64_t] end, int64_t minp) -> np.ndarray:
     cdef:
         Py_ssize_t i, j
@@ -156,39 +151,25 @@ def roll_sum(float_complex_types[:] values, ndarray[int64_t] start,
             e = end[i]
 
             if i == 0 or not is_monotonic_increasing_bounds or s >= end[i - 1]:
-                if float_complex_types is complex64_t:
-                    prev_value = values[s].real
-                else:
-                    prev_value = values[s]
+
                 # setup
+                prev_value = values[s]
                 num_consecutive_same_value = 0
                 sum_x = compensation_add = compensation_remove = 0
                 nobs = 0
                 for j in range(s, e):
-                    if float_complex_types is complex64_t:
-                        prev_value = values[j].real
-                    else:
-                        prev_value = values[j]
-                    add_sum(prev_value, &nobs, &sum_x, &compensation_add,
+                    add_sum(values[j], &nobs, &sum_x, &compensation_add,
                             &num_consecutive_same_value, &prev_value)
 
             else:
 
                 # calculate deletes
-                if float_complex_types is complex64_t:
-                    prev_value = values[j].real
-                else:
-                    prev_value = values[j]
                 for j in range(start[i - 1], s):
-                    remove_sum(prev_value, &nobs, &sum_x, &compensation_remove)
+                    remove_sum(values[j], &nobs, &sum_x, &compensation_remove)
 
                 # calculate adds
                 for j in range(end[i - 1], e):
-                    if float_complex_types is complex64_t:
-                        prev_value = values[j].real
-                    else:
-                        prev_value = values[j]
-                    add_sum(prev_value, &nobs, &sum_x, &compensation_add,
+                    add_sum(values[j], &nobs, &sum_x, &compensation_add,
                             &num_consecutive_same_value, &prev_value)
 
             output[i] = calc_sum(minp, nobs, sum_x, num_consecutive_same_value, prev_value)
@@ -270,7 +251,7 @@ cdef inline void remove_mean(float64_t val, Py_ssize_t *nobs, float64_t *sum_x,
             neg_ct[0] = neg_ct[0] - 1
 
 
-def roll_mean(float_complex_types[:] values, ndarray[int64_t] start,
+def roll_mean(const float64_t[:] values, ndarray[int64_t] start,
               ndarray[int64_t] end, int64_t minp) -> np.ndarray:
     cdef:
         float64_t val, compensation_add, compensation_remove, sum_x, prev_value
@@ -295,18 +276,10 @@ def roll_mean(float_complex_types[:] values, ndarray[int64_t] start,
                 # setup
                 compensation_add = compensation_remove = sum_x = 0
                 nobs = neg_ct = 0
-
-                if float_complex_types is complex64_t:
-                    prev_value = values[s].real
-                else:
-                    prev_value = values[s]
-
+                prev_value = values[s]
                 num_consecutive_same_value = 0
                 for j in range(s, e):
-                    if float_complex_types is complex64_t:
-                        val = values[j].real
-                    else:
-                        val = values[j]
+                    val = values[j]
                     add_mean(val, &nobs, &sum_x, &neg_ct, &compensation_add,
                              &num_consecutive_same_value, &prev_value)
 
@@ -314,18 +287,12 @@ def roll_mean(float_complex_types[:] values, ndarray[int64_t] start,
 
                 # calculate deletes
                 for j in range(start[i - 1], s):
-                    if float_complex_types is complex64_t:
-                        val = values[j].real
-                    else:
-                        val = values[j]
+                    val = values[j]
                     remove_mean(val, &nobs, &sum_x, &neg_ct, &compensation_remove)
 
                 # calculate adds
                 for j in range(end[i - 1], e):
-                    if float_complex_types is complex64_t:
-                        val = values[j].real
-                    else:
-                        val = values[j]
+                    val = values[j]
                     add_mean(val, &nobs, &sum_x, &neg_ct, &compensation_add,
                              &num_consecutive_same_value, &prev_value)
 
@@ -420,14 +387,14 @@ cdef inline void remove_var(float64_t val, float64_t *nobs, float64_t *mean_x,
             ssqdm_x[0] = 0
 
 
-def roll_var(float_complex_types[:] values, ndarray[int64_t] start,
+def roll_var(const float64_t[:] values, ndarray[int64_t] start,
              ndarray[int64_t] end, int64_t minp, int ddof=1) -> np.ndarray:
     """
     Numerically stable implementation using Welford's method.
     """
     cdef:
         float64_t mean_x, ssqdm_x, nobs, compensation_add,
-        float64_t compensation_remove, prev_value, val
+        float64_t compensation_remove, prev_value
         int64_t s, e, num_consecutive_same_value
         Py_ssize_t i, j, N = len(start)
         ndarray[float64_t] output
@@ -450,20 +417,12 @@ def roll_var(float_complex_types[:] values, ndarray[int64_t] start,
             # never removed
             if i == 0 or not is_monotonic_increasing_bounds or s >= end[i - 1]:
 
-                if float_complex_types is complex64_t:
-                    prev_value = values[s].real
-                else:
-                    prev_value = values[s]
-
+                prev_value = values[s]
                 num_consecutive_same_value = 0
 
                 mean_x = ssqdm_x = nobs = compensation_add = compensation_remove = 0
                 for j in range(s, e):
-                    if float_complex_types is complex64_t:
-                        val = values[j].real
-                    else:
-                        val = values[j]
-                    add_var(val, &nobs, &mean_x, &ssqdm_x, &compensation_add,
+                    add_var(values[j], &nobs, &mean_x, &ssqdm_x, &compensation_add,
                             &num_consecutive_same_value, &prev_value)
 
             else:
@@ -473,20 +432,12 @@ def roll_var(float_complex_types[:] values, ndarray[int64_t] start,
 
                 # calculate deletes
                 for j in range(start[i - 1], s):
-                    if float_complex_types is complex64_t:
-                        val = values[j].real
-                    else:
-                        val = values[j]
-                    remove_var(val, &nobs, &mean_x, &ssqdm_x,
+                    remove_var(values[j], &nobs, &mean_x, &ssqdm_x,
                                &compensation_remove)
 
                 # calculate adds
                 for j in range(end[i - 1], e):
-                    if float_complex_types is complex64_t:
-                        val = values[j].real
-                    else:
-                        val = values[j]
-                    add_var(val, &nobs, &mean_x, &ssqdm_x, &compensation_add,
+                    add_var(values[j], &nobs, &mean_x, &ssqdm_x, &compensation_add,
                             &num_consecutive_same_value, &prev_value)
 
             output[i] = calc_var(minp, ddof, nobs, ssqdm_x, num_consecutive_same_value)
@@ -611,7 +562,7 @@ cdef inline void remove_skew(float64_t val, int64_t *nobs,
         xxx[0] = t
 
 
-def roll_skew(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
+def roll_skew(ndarray[float64_t] values, ndarray[int64_t] start,
               ndarray[int64_t] end, int64_t minp) -> np.ndarray:
     cdef:
         Py_ssize_t i, j
@@ -621,16 +572,10 @@ def roll_skew(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
         float64_t compensation_x_add, compensation_x_remove
         float64_t x, xx, xxx
         float64_t prev_value
-        ndarray[float64_t] values
-        int64_t nobs = 0, N = len(start), V = len(fused_values), nobs_mean = 0
+        int64_t nobs = 0, N = len(start), V = len(values), nobs_mean = 0
         int64_t s, e, num_consecutive_same_value
         ndarray[float64_t] output, mean_array, values_copy
-        bint is_monotonic_increasing_bound
-
-    if float_complex_types is complex64_t:
-        values = fused_values.real.astype(float)
-    else:
-        values = fused_values
+        bint is_monotonic_increasing_bounds
 
     minp = max(minp, 3)
     is_monotonic_increasing_bounds = is_monotonic_increasing_start_end_bounds(
@@ -830,7 +775,7 @@ cdef inline void remove_kurt(float64_t val, int64_t *nobs,
         xxxx[0] = t
 
 
-def roll_kurt(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
+def roll_kurt(ndarray[float64_t] values, ndarray[int64_t] start,
               ndarray[int64_t] end, int64_t minp) -> np.ndarray:
     cdef:
         Py_ssize_t i, j
@@ -841,16 +786,10 @@ def roll_kurt(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
         float64_t compensation_x_remove, compensation_x_add
         float64_t x, xx, xxx, xxxx
         float64_t prev_value
-        ndarray[float64_t] values
         int64_t nobs, s, e, num_consecutive_same_value
-        int64_t N = len(start), V = len(fused_values), nobs_mean = 0
+        int64_t N = len(start), V = len(values), nobs_mean = 0
         ndarray[float64_t] output, values_copy
         bint is_monotonic_increasing_bounds
-
-    if float_complex_types is complex64_t:
-        values = fused_values.real.astype(float)
-    else:
-        values = fused_values
 
     minp = max(minp, 4)
     is_monotonic_increasing_bounds = is_monotonic_increasing_start_end_bounds(
@@ -930,7 +869,7 @@ def roll_kurt(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
 # Rolling median, min, max
 
 
-def roll_median_c(float_complex_types[:] values, ndarray[int64_t] start,
+def roll_median_c(const float64_t[:] values, ndarray[int64_t] start,
                   ndarray[int64_t] end, int64_t minp) -> np.ndarray:
     cdef:
         Py_ssize_t i, j
@@ -971,10 +910,7 @@ def roll_median_c(float_complex_types[:] values, ndarray[int64_t] start,
                     nobs = 0
                 # setup
                 for j in range(s, e):
-                    if float_complex_types is complex64_t:
-                        val = values[j].real
-                    else:
-                        val = values[j]
+                    val = values[j]
                     if val == val:
                         nobs += 1
                         err = skiplist_insert(sl, val) == -1
@@ -985,10 +921,7 @@ def roll_median_c(float_complex_types[:] values, ndarray[int64_t] start,
 
                 # calculate adds
                 for j in range(end[i - 1], e):
-                    if float_complex_types is complex64_t:
-                        val = values[j].real
-                    else:
-                        val = values[j]
+                    val = values[j]
                     if val == val:
                         nobs += 1
                         err = skiplist_insert(sl, val) == -1
@@ -997,10 +930,7 @@ def roll_median_c(float_complex_types[:] values, ndarray[int64_t] start,
 
                 # calculate deletes
                 for j in range(start[i - 1], s):
-                    if float_complex_types is complex64_t:
-                        val = values[j].real
-                    else:
-                        val = values[j]
+                    val = values[j]
                     if val == val:
                         skiplist_remove(sl, val)
                         nobs -= 1
@@ -1080,7 +1010,7 @@ cdef inline numeric_t calc_mm(int64_t minp, Py_ssize_t nobs,
     return result
 
 
-def roll_max(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
+def roll_max(ndarray[float64_t] values, ndarray[int64_t] start,
              ndarray[int64_t] end, int64_t minp) -> np.ndarray:
     """
     Moving max of 1d array of any numeric type along axis=0 ignoring NaNs.
@@ -1101,16 +1031,10 @@ def roll_max(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
     -------
     np.ndarray[float]
     """
-    cdef:
-        ndarray[float64_t] values
-    if float_complex_types is complex64_t:
-        values = fused_values.real.astype(float)
-    else:
-        values = fused_values
     return _roll_min_max(values, start, end, minp, is_max=1)
 
 
-def roll_min(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
+def roll_min(ndarray[float64_t] values, ndarray[int64_t] start,
              ndarray[int64_t] end, int64_t minp) -> np.ndarray:
     """
     Moving min of 1d array of any numeric type along axis=0 ignoring NaNs.
@@ -1128,12 +1052,6 @@ def roll_min(ndarray[float_complex_types] fused_values, ndarray[int64_t] start,
     -------
     np.ndarray[float]
     """
-    cdef:
-        ndarray[float64_t] values
-    if float_complex_types is complex64_t:
-        values = fused_values.real.astype(float)
-    else:
-        values = fused_values
     return _roll_min_max(values, start, end, minp, is_max=0)
 
 
