@@ -139,3 +139,14 @@ def test_compare_datetime64_and_string():
     tm.assert_series_equal(result_eq1, expected_eq)
     tm.assert_series_equal(result_eq2, expected_eq)
     tm.assert_series_equal(result_neq, expected_neq)
+
+
+def test_compare_none_type():
+    # GH#30429
+
+    df = pd.DataFrame({"foo": ["a", "b", "c"], "bar": [1, 3, 2]})
+    df.iloc[1, 0] = None
+
+    result = df["foo"] is None
+    expected = pd.Series([False, True, False], name="foo")
+    tm.assert_series_equal(result, expected)

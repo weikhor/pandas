@@ -277,7 +277,7 @@ def comparison_op(left: ArrayLike, right: Any, op) -> ArrayLike:
         if op is operator.ne:
             res_values = np.ones(lvalues.shape, dtype=bool)
         else:
-            res_values = np.zeros(lvalues.shape, dtype=bool)
+            res_values = lvalues == rvalues
 
     elif is_numeric_v_string_like(lvalues, rvalues):
         # GH#36377 going through the numexpr path would incorrectly raise
