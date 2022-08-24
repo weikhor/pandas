@@ -144,9 +144,9 @@ def test_compare_datetime64_and_string():
 def test_compare_none_type():
     # GH#30429
 
+    none_var = None
     df = pd.DataFrame({"foo": ["a", "b", "c"], "bar": [1, 3, 2]})
     df.iloc[1, 0] = None
-
-    result = df["foo"] is None
+    result = df["foo"] == none_var
     expected = pd.Series([False, True, False], name="foo")
     tm.assert_series_equal(result, expected)
