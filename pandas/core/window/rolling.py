@@ -29,6 +29,7 @@ from pandas._typing import (
     ArrayLike,
     Axis,
     NDFrameT,
+    QuantileInterpolation,
     WindowingRankType,
 )
 from pandas.compat._optional import import_optional_dependency
@@ -79,6 +80,7 @@ from pandas.core.util.numba_ import (
 )
 from pandas.core.window.common import (
     flex_binary_moment,
+    maybe_warn_args_and_kwargs,
     zsqrt,
 )
 from pandas.core.window.doc import (
@@ -108,7 +110,6 @@ if TYPE_CHECKING:
     )
     from pandas.core.generic import NDFrame
     from pandas.core.groupby.ops import BaseGrouper
-    from pandas.core.internals import Block  # noqa:F401
 
 
 class BaseWindow(SelectionMixin):
@@ -123,7 +124,7 @@ class BaseWindow(SelectionMixin):
         obj: NDFrame,
         window=None,
         min_periods: int | None = None,
-        center: bool = False,
+        center: bool | None = False,
         win_type: str | None = None,
         axis: Axis = 0,
         on: str | Index | None = None,
@@ -144,7 +145,7 @@ class BaseWindow(SelectionMixin):
         self._win_type = win_type
         self.axis = obj._get_axis_number(axis) if axis is not None else None
         self.method = method
-        self._win_freq_i8 = None
+        self._win_freq_i8: int | None = None
         if self.on is None:
             if self.axis == 0:
                 self._on = self.obj.index
@@ -171,7 +172,7 @@ class BaseWindow(SelectionMixin):
                 "win_type will no longer return 'freq' in a future version. "
                 "Check the type of self.window instead.",
                 FutureWarning,
-                stacklevel=find_stack_level(),
+                stacklevel=find_stack_level(inspect.currentframe()),
             )
             return "freq"
         return self._win_type
@@ -181,7 +182,7 @@ class BaseWindow(SelectionMixin):
         warnings.warn(
             "is_datetimelike is deprecated and will be removed in a future version.",
             FutureWarning,
-            stacklevel=find_stack_level(),
+            stacklevel=find_stack_level(inspect.currentframe()),
         )
         return self._win_freq_i8 is not None
 
@@ -189,7 +190,7 @@ class BaseWindow(SelectionMixin):
         warnings.warn(
             "validate is deprecated and will be removed in a future version.",
             FutureWarning,
-            stacklevel=find_stack_level(),
+            stacklevel=find_stack_level(inspect.currentframe()),
         )
         return self._validate()
 
@@ -552,7 +553,7 @@ class BaseWindow(SelectionMixin):
                 "Select only valid columns before calling the operation. "
                 f"Dropped columns were {dropped}",
                 FutureWarning,
-                stacklevel=find_stack_level(),
+                stacklevel=find_stack_level(inspect.currentframe()),
             )
 
         return self._resolve_output(df, obj)
@@ -1661,7 +1662,7 @@ class RollingAndExpandingMixin(BaseWindow):
     def quantile(
         self,
         quantile: float,
-        interpolation: str = "linear",
+        interpolation: QuantileInterpolation = "linear",
         numeric_only: bool = False,
         **kwargs,
     ):
@@ -1840,15 +1841,13 @@ class Rolling(RollingAndExpandingMixin):
                     "compatible with a datetimelike index"
                 ) from err
             if isinstance(self._on, PeriodIndex):
-                # error: Incompatible types in assignment (expression has type "float",
-                # variable has type "None")
+                # error: Incompatible types in assignment (expression has type
+                # "float", variable has type "Optional[int]")
                 self._win_freq_i8 = freq.nanos / (  # type: ignore[assignment]
                     self._on.freq.nanos / self._on.freq.n
                 )
             else:
-                # error: Incompatible types in assignment (expression has type "int",
-                # variable has type "None")
-                self._win_freq_i8 = freq.nanos  # type: ignore[assignment]
+                self._win_freq_i8 = freq.nanos
 
             # min_periods must be an integer
             if self.min_periods is None:
@@ -1971,7 +1970,7 @@ class Rolling(RollingAndExpandingMixin):
                     "Specify min_periods=0 instead."
                 ),
                 FutureWarning,
-                stacklevel=find_stack_level(),
+                stacklevel=find_stack_level(inspect.currentframe()),
             )
             self.min_periods = 0
             result = super().count()
@@ -2083,6 +2082,7 @@ class Rolling(RollingAndExpandingMixin):
         engine_kwargs: dict[str, bool] | None = None,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "sum", args, kwargs)
         nv.validate_rolling_func("sum", args, kwargs)
         return super().sum(
             numeric_only=numeric_only,
@@ -2116,6 +2116,7 @@ class Rolling(RollingAndExpandingMixin):
         engine_kwargs: dict[str, bool] | None = None,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "max", args, kwargs)
         nv.validate_rolling_func("max", args, kwargs)
         return super().max(
             numeric_only=numeric_only,
@@ -2164,6 +2165,7 @@ class Rolling(RollingAndExpandingMixin):
         engine_kwargs: dict[str, bool] | None = None,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "min", args, kwargs)
         nv.validate_rolling_func("min", args, kwargs)
         return super().min(
             numeric_only=numeric_only,
@@ -2219,6 +2221,7 @@ class Rolling(RollingAndExpandingMixin):
         engine_kwargs: dict[str, bool] | None = None,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "mean", args, kwargs)
         nv.validate_rolling_func("mean", args, kwargs)
         return super().mean(
             numeric_only=numeric_only,
@@ -2265,6 +2268,7 @@ class Rolling(RollingAndExpandingMixin):
         engine_kwargs: dict[str, bool] | None = None,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "median", None, kwargs)
         return super().median(
             numeric_only=numeric_only,
             engine=engine,
@@ -2328,6 +2332,7 @@ class Rolling(RollingAndExpandingMixin):
         engine_kwargs: dict[str, bool] | None = None,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "std", args, kwargs)
         nv.validate_rolling_func("std", args, kwargs)
         return super().std(
             ddof=ddof,
@@ -2393,6 +2398,7 @@ class Rolling(RollingAndExpandingMixin):
         engine_kwargs: dict[str, bool] | None = None,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "var", args, kwargs)
         nv.validate_rolling_func("var", args, kwargs)
         return super().var(
             ddof=ddof,
@@ -2419,6 +2425,7 @@ class Rolling(RollingAndExpandingMixin):
         agg_method="skew",
     )
     def skew(self, numeric_only: bool = False, **kwargs):
+        maybe_warn_args_and_kwargs(type(self), "skew", None, kwargs)
         return super().skew(numeric_only=numeric_only, **kwargs)
 
     @doc(
@@ -2457,6 +2464,7 @@ class Rolling(RollingAndExpandingMixin):
         agg_method="sem",
     )
     def sem(self, ddof: int = 1, numeric_only: bool = False, *args, **kwargs):
+        maybe_warn_args_and_kwargs(type(self), "sem", args, kwargs)
         nv.validate_rolling_func("sem", args, kwargs)
         # Raise here so error message says sem instead of std
         self._validate_numeric_only("sem", numeric_only)
@@ -2503,6 +2511,7 @@ class Rolling(RollingAndExpandingMixin):
         agg_method="kurt",
     )
     def kurt(self, numeric_only: bool = False, **kwargs):
+        maybe_warn_args_and_kwargs(type(self), "kurt", None, kwargs)
         return super().kurt(numeric_only=numeric_only, **kwargs)
 
     @doc(
@@ -2556,10 +2565,11 @@ class Rolling(RollingAndExpandingMixin):
     def quantile(
         self,
         quantile: float,
-        interpolation: str = "linear",
+        interpolation: QuantileInterpolation = "linear",
         numeric_only: bool = False,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "quantile", None, kwargs)
         return super().quantile(
             quantile=quantile,
             interpolation=interpolation,
@@ -2637,6 +2647,7 @@ class Rolling(RollingAndExpandingMixin):
         numeric_only: bool = False,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "rank", None, kwargs)
         return super().rank(
             method=method,
             ascending=ascending,
@@ -2683,6 +2694,7 @@ class Rolling(RollingAndExpandingMixin):
         numeric_only: bool = False,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "cov", None, kwargs)
         return super().cov(
             other=other,
             pairwise=pairwise,
@@ -2816,6 +2828,7 @@ class Rolling(RollingAndExpandingMixin):
         numeric_only: bool = False,
         **kwargs,
     ):
+        maybe_warn_args_and_kwargs(type(self), "corr", None, kwargs)
         return super().corr(
             other=other,
             pairwise=pairwise,
@@ -2855,7 +2868,9 @@ class RollingGroupby(BaseWindowGroupby, Rolling):
             window = self.window
         elif self._win_freq_i8 is not None:
             rolling_indexer = VariableWindowIndexer
-            window = self._win_freq_i8
+            # error: Incompatible types in assignment (expression has type
+            # "int", variable has type "BaseIndexer")
+            window = self._win_freq_i8  # type: ignore[assignment]
         else:
             rolling_indexer = FixedWindowIndexer
             window = self.window

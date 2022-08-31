@@ -1,6 +1,8 @@
 """
 Tests for DatetimeArray
 """
+import operator
+
 import numpy as np
 import pytest
 
@@ -37,6 +39,26 @@ class TestNonNano:
         else:
             return DatetimeTZDtype(unit=unit, tz=tz)
 
+    @pytest.fixture
+    def dta_dti(self, unit, dtype):
+        tz = getattr(dtype, "tz", None)
+
+        dti = pd.date_range("2016-01-01", periods=55, freq="D", tz=tz)
+        if tz is None:
+            arr = np.asarray(dti).astype(f"M8[{unit}]")
+        else:
+            arr = np.asarray(dti.tz_convert("UTC").tz_localize(None)).astype(
+                f"M8[{unit}]"
+            )
+
+        dta = DatetimeArray._simple_new(arr, dtype=dtype)
+        return dta, dti
+
+    @pytest.fixture
+    def dta(self, dta_dti):
+        dta, dti = dta_dti
+        return dta
+
     def test_non_nano(self, unit, reso, dtype):
         arr = np.arange(5, dtype=np.int64).view(f"M8[{unit}]")
         dta = DatetimeArray._simple_new(arr, dtype=dtype)
@@ -52,17 +74,8 @@ class TestNonNano:
     @pytest.mark.parametrize(
         "field", DatetimeArray._field_ops + DatetimeArray._bool_ops
     )
-    def test_fields(self, unit, reso, field, dtype):
-        tz = getattr(dtype, "tz", None)
-        dti = pd.date_range("2016-01-01", periods=55, freq="D", tz=tz)
-        if tz is None:
-            arr = np.asarray(dti).astype(f"M8[{unit}]")
-        else:
-            arr = np.asarray(dti.tz_convert("UTC").tz_localize(None)).astype(
-                f"M8[{unit}]"
-            )
-
-        dta = DatetimeArray._simple_new(arr, dtype=dtype)
+    def test_fields(self, unit, reso, field, dtype, dta_dti):
+        dta, dti = dta_dti
 
         # FIXME: assert (dti == dta).all()
 
@@ -107,6 +120,93 @@ class TestNonNano:
         assert res._reso == dta._reso
         assert res == dti.std().floor(unit)
 
+    @pytest.mark.filterwarnings("ignore:Converting to PeriodArray.*:UserWarning")
+    def test_to_period(self, dta_dti):
+        dta, dti = dta_dti
+        result = dta.to_period("D")
+        expected = dti._data.to_period("D")
+
+        tm.assert_extension_array_equal(result, expected)
+
+    def test_iter(self, dta):
+        res = next(iter(dta))
+        expected = dta[0]
+
+        assert type(res) is pd.Timestamp
+        assert res.value == expected.value
+        assert res._reso == expected._reso
+        assert res == expected
+
+    def test_astype_object(self, dta):
+        result = dta.astype(object)
+        assert all(x._reso == dta._reso for x in result)
+        assert all(x == y for x, y in zip(result, dta))
+
+    def test_to_pydatetime(self, dta_dti):
+        dta, dti = dta_dti
+
+        result = dta.to_pydatetime()
+        expected = dti.to_pydatetime()
+        tm.assert_numpy_array_equal(result, expected)
+
+    @pytest.mark.parametrize("meth", ["time", "timetz", "date"])
+    def test_time_date(self, dta_dti, meth):
+        dta, dti = dta_dti
+
+        result = getattr(dta, meth)
+        expected = getattr(dti, meth)
+        tm.assert_numpy_array_equal(result, expected)
+
+    def test_format_native_types(self, unit, reso, dtype, dta_dti):
+        # In this case we should get the same formatted values with our nano
+        #  version dti._data as we do with the non-nano dta
+        dta, dti = dta_dti
+
+        res = dta._format_native_types()
+        exp = dti._data._format_native_types()
+        tm.assert_numpy_array_equal(res, exp)
+
+    def test_repr(self, dta_dti, unit):
+        dta, dti = dta_dti
+
+        assert repr(dta) == repr(dti._data).replace("[ns", f"[{unit}")
+
+    # TODO: tests with td64
+    def test_compare_mismatched_resolutions(self, comparison_op):
+        # comparison that numpy gets wrong bc of silent overflows
+        op = comparison_op
+
+        iinfo = np.iinfo(np.int64)
+        vals = np.array([iinfo.min, iinfo.min + 1, iinfo.max], dtype=np.int64)
+
+        # Construct so that arr2[1] < arr[1] < arr[2] < arr2[2]
+        arr = np.array(vals).view("M8[ns]")
+        arr2 = arr.view("M8[s]")
+
+        left = DatetimeArray._simple_new(arr, dtype=arr.dtype)
+        right = DatetimeArray._simple_new(arr2, dtype=arr2.dtype)
+
+        if comparison_op is operator.eq:
+            expected = np.array([False, False, False])
+        elif comparison_op is operator.ne:
+            expected = np.array([True, True, True])
+        elif comparison_op in [operator.lt, operator.le]:
+            expected = np.array([False, False, True])
+        else:
+            expected = np.array([False, True, False])
+
+        result = op(left, right)
+        tm.assert_numpy_array_equal(result, expected)
+
+        result = op(left[1], right)
+        tm.assert_numpy_array_equal(result, expected)
+
+        if op not in [operator.eq, operator.ne]:
+            # check that numpy still gets this wrong; if it is fixed we may be
+            #  able to remove compare_mismatched_resolutions
+            np_res = op(left._ndarray, right._ndarray)
+            tm.assert_numpy_array_equal(np_res[1:], ~expected[1:])
+
 
 class TestDatetimeArrayComparisons:
     # TODO: merge this into tests/arithmetic/test_datetime64 once it is
@@ -145,6 +245,36 @@ class TestDatetimeArrayComparisons:
 
 
 class TestDatetimeArray:
+    def test_astype_non_nano_tznaive(self):
+        dti = pd.date_range("2016-01-01", periods=3)
+
+        res = dti.astype("M8[s]")
+        assert res.dtype == "M8[s]"
+
+        dta = dti._data
+        res = dta.astype("M8[s]")
+        assert res.dtype == "M8[s]"
+        assert isinstance(res, pd.core.arrays.DatetimeArray)  # used to be ndarray
+
+    def test_astype_non_nano_tzaware(self):
+        dti = pd.date_range("2016-01-01", periods=3, tz="UTC")
+
+        res = dti.astype("M8[s, US/Pacific]")
+        assert res.dtype == "M8[s, US/Pacific]"
+
+        dta = dti._data
+        res = dta.astype("M8[s, US/Pacific]")
+        assert res.dtype == "M8[s, US/Pacific]"
+
+        # from non-nano to non-nano, preserving reso
+        res2 = res.astype("M8[s, UTC]")
+        assert res2.dtype == "M8[s, UTC]"
+        assert not tm.shares_memory(res2, res)
+
+        res3 = res.astype("M8[s, UTC]", copy=False)
+        assert res2.dtype == "M8[s, UTC]"
+        assert tm.shares_memory(res3, res)
+
     def test_astype_to_same(self):
         arr = DatetimeArray._from_sequence(
             ["2000"], dtype=DatetimeTZDtype(tz="US/Central")
